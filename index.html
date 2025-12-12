@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clinical Summarization Demo</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* Custom styles for highlighting */
+        /* These colors correspond to the entity types (PATIENT, SYMPTOM, DISEASE, DRUG) */
+        .highlight-PATIENT { background-color: #ffe0b2; color: #e65100; font-weight: 600; padding: 1px 3px; border-radius: 4px; }
+        .highlight-SYMPTOM { background-color: #c8e6c9; color: #1b5e20; font-weight: 600; padding: 1px 3px; border-radius: 4px; }
+        .highlight-DISEASE { background-color: #b3e5fc; color: #01579b; font-weight: 600; padding: 1px 3px; border-radius: 4px; }
+        .highlight-DRUG { background-color: #f8bbd0; color: #880e4f; font-weight: 600; padding: 1px 3px; border-radius: 4px; }
+        .highlight-UNKNOWN { background-color: #fbe6e6; color: #c62828; font-weight: 600; padding: 1px 3px; border-radius: 4px; }
+        
+        /* Utility for markdown text */
+        .summary-output p { margin-bottom: 0.5rem; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 sm:p-8 font-sans">
+
+    <div class="max-w-4xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-extrabold text-blue-800 tracking-tight">
+                Entity-Accurate Clinical Summarization
+            </h1>
+            <p class="mt-2 text-lg text-gray-600">
+                NLP Project: NER, Entity-Guided Summarization, and Hallucination Mitigation
+            </p>
+        </header>
+
+        <div class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl border border-gray-100">
+
+            <!-- Input Section -->
+            <div class="mb-6">
+                <label for="clinical-text" class="block text-lg font-medium text-gray-700 mb-2 flex items-center">
+                    <i data-lucide="clipboard-list" class="w-5 h-5 mr-2 text-blue-500"></i>
+                    Input Clinical Note
+                </label>
+                <textarea id="clinical-text" rows="5"
+                    class="w-full p-4 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-800 transition shadow-sm"
+                    placeholder="e.g. The patient with hypertension and type 2 diabetes was started on Metformin and Aspirin. He also reports shortness of breath."></textarea>
+            </div>
+
+            <button id="summarize-btn"
+                class="w-full px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-lg hover:bg-blue-700 transition duration-300 transform hover:scale-[1.005] focus:outline-none focus:ring-4 focus:ring-blue-500 focus:ring-opacity-50 flex items-center justify-center">
+                <i data-lucide="rocket" class="w-5 h-5 mr-2"></i>
+                Generate Entity-Aware Summary
+            </button>
+
+            <!-- Loading Indicator -->
+            <div id="loading-indicator" class="hidden mt-6 text-center">
+                <div class="animate-spin inline-block w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+                <p class="mt-2 text-blue-600 font-medium">Analyzing note and generating summary...</p>
+            </div>
+
+            <!-- Output Section -->
+            <div id="output-section" class="mt-8 space-y-8 hidden">
+                
+                <!-- Debugging Alert Box -->
+                <div id="debug-alert" class="hidden p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg" role="alert">
+                    <p class="font-bold flex items-center"><i data-lucide="alert-triangle" class="w-5 h-5 mr-2"></i> Error: API Request Failed</p>
+                    <p id="debug-message" class="text-sm mt-1"></p>
+                    <p class="text-xs mt-2 italic">This is likely due to CORS restrictions or an invalid API key. Check your browser's console (F12) for details.</p>
+                </div>
+                
+                <!-- Entity Highlighting (Step 5) -->
+                <div>
+                    <h2 class="text-xl font-bold text-gray-800 mb-3 flex items-center">
+                        <i data-lucide="eye" class="w-5 h-5 mr-2 text-green-600"></i>
+                        Summary with Highlighted Entities (Step 5)
+                    </h2>
+                    <div id="summary-highlighted" class="p-4 bg-green-50 border border-green-200 rounded-lg text-gray-800 leading-relaxed summary-output">
+                        <!-- Highlighted summary goes here -->
+                    </div>
+                </div>
+
+                <!-- Entity Extraction (Step 2) -->
+                <div>
+                    <h2 class="text-xl font-bold text-gray-800 mb-3 flex items-center">
+                        <i data-lucide="tag" class="w-5 h-5 mr-2 text-purple-600"></i>
+                        Entities Detected in Source (Step 2)
+                    </h2>
+                    <div id="source-entities" class="flex flex-wrap gap-2 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                        <!-- Entity tags go here -->
+                    </div>
+                </div>
+
+                <!-- Mitigation Metrics (Step 4 Check) -->
+                <div>
+                    <h2 class="text-xl font-bold text-gray-800 mb-3 flex items-center">
+                        <i data-lucide="shield-check" class="w-5 h-5 mr-2 text-red-600"></i>
+                        Hallucination Mitigation Metrics (Step 4 Check)
+                    </h2>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="p-3 bg-gray-100 rounded-lg">
+                            <p class="font-semibold text-gray-600">Covered Entities</p>
+                            <span id="covered-ents" class="text-sm text-green-700"></span>
+                        </div>
+                        <div class="p-3 bg-gray-100 rounded-lg">
+                            <p class="font-semibold text-gray-600">Missing Entities</p>
+                            <span id="missing-ents" class="text-sm text-yellow-700"></span>
+                        </div>
+                        <div class="p-3 bg-gray-100 rounded-lg">
+                            <p class="font-semibold text-gray-600">Hallucinated Entities</p>
+                            <span id="hallucinated-ents" class="text-sm text-red-700"></span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- Configuration (from your project's code) ---
+
+        // !!! IMPORTANT: REPLACE 'YOUR_HARDCODED_API_KEY_HERE' with your actual Gemini API Key.
+        // The error you were seeing was because you had replaced the key but the checking logic 
+        // was comparing against the key itself. This corrected code compares against the string 
+        // "YOUR_HARDCODED_API_KEY_HERE".
+        const API_KEY = "AIzaSyDOIKCuh9REQroIjv1pO1jgxnBntwnpaFA"; 
+        
+        const DEMO_PHRASES = [
+            { phrases: ["john smith", "mary johnson", "mr. brown", "ms. davis", "the patient", "patient a", "patient"], type: "PATIENT" },
+            { phrases: ["fever", "high fever", "chest pain", "shortness of breath", "cough", "nausea", "vomiting", "headache"], type: "SYMPTOM" },
+            { phrases: ["diabetes", "type 2 diabetes", "hypertension", "infection", "influenza", "the flu"], type: "DISEASE" },
+            { phrases: ["aspirin", "paracetamol", "ibuprofen", "metformin", "insulin", "amoxicillin", "azithromycin", "heparin"], type: "DRUG" },
+        ];
+        
+        const API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=";
+        
+
+        // --- Utility Functions ---
+
+        function show(id) { document.getElementById(id).classList.remove('hidden'); }
+        function hide(id) { document.getElementById(id).classList.add('hidden'); }
+        
+        /**
+         * Simulates the NER model (Step 2) using rule-based matching from your project's list.
+         * Returns an array of unique entities found with their types.
+         */
+        function extractEntities(text) {
+            const textLower = text.toLowerCase();
+            const foundEntities = [];
+            const seen = new Set();
+
+            for (const category of DEMO_PHRASES) {
+                for (const phrase of category.phrases) {
+                    // Regex to match the phrase as a whole word/phrase (using \b word boundaries)
+                    const pattern = new RegExp(`\\b${phrase.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')}\\b`, 'g');
+                    
+                    if (pattern.test(textLower)) {
+                        if (!seen.has(phrase)) {
+                            // Find the original casing for better display
+                            const match = text.match(new RegExp(phrase, 'i'));
+                            const originalPhrase = match ? match[0] : phrase;
+                            foundEntities.push({ text: originalPhrase, type: category.type });
+                            seen.add(phrase);
+                        }
+                    }
+                }
+            }
+            return foundEntities;
+        }
+
+        /**
+         * Highlights entities in the text using colored span tags (Step 5).
+         */
+        function highlightEntities(text, entities) {
+            let highlightedHtml = text;
+            
+            // Sort entities by length descending to prioritize multi-word entities (e.g., "type 2 diabetes" before "diabetes")
+            entities.sort((a, b) => b.text.length - a.text.length);
+
+            for (const entity of entities) {
+                // Use a non-global regex to replace only one instance at a time to prevent double-wrapping
+                const regex = new RegExp(`\\b${entity.text.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'i');
+                
+                // Replace the first match with the highlighted version
+                highlightedHtml = highlightedHtml.replace(regex, `<span class="highlight-${entity.type}">${entity.text}</span>`);
+            }
+
+            return highlightedHtml;
+        }
+
+        /**
+         * Calls the Gemini API to generate the entity-aware summary (Step 3).
+         */
+        async function getEntityAwareSummary(text, entities) {
+            
+            // This check now correctly identifies if the placeholder is still present.
+            if (!API_KEY || API_KEY === "AIzaSyDOIKCuh9REQroIjv1pO1jgxnBntwnpaFA") { 
+                throw new Error("API Key is missing. Please edit the code and replace 'YOUR_HARDCODED_API_KEY_HERE' with your actual key.");
+            }
+
+            const entityList = entities.map(e => `${e.text} (${e.type})`).join(", ") || "None";
+            
+            const systemPrompt = "You are a clinically trained T5 summarization model. Your task is to generate a concise, medically coherent, and factual summary of the patient's note. The summary must be guided by and include the provided key entities. Ensure NO new medical facts are introduced (mitigate hallucination). Respond only with the summary text.";
+            const userQuery = `Clinical Note: "${text}"\n\nKey Entities to include: ${entityList}\n\nConcise Summary:`;
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+            };
+
+            let response;
+            for (let i = 0; i < 3; i++) { // Exponential backoff retry loop
+                try {
+                    response = await fetch(API_URL + API_KEY, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) {
+                        break; // Success
+                    }
+                    if (response.status === 429) {
+                        await new Promise(r => setTimeout(r, Math.pow(2, i) * 1000));
+                    } else {
+                        // Throw error to be caught by the main pipeline
+                        throw new Error(`API failed with status ${response.status}: ${response.statusText}`);
+                    }
+                } catch (error) {
+                    // Catch network error (e.g., CORS block or no internet)
+                    if (error instanceof TypeError) {
+                        throw new Error("Network error or CORS restriction. Check your browser's console (F12) for network details.");
+                    }
+                    throw error;
+                }
+            }
+            if (!response || !response.ok) throw new Error(`API returned status ${response ? response.status : 'unknown'}`);
+
+            const result = await response.json();
+            return result.candidates?.[0]?.content?.parts?.[0]?.text || "Error: Could not generate summary.";
+        }
+
+        /**
+         * Main function to run the pipeline.
+         */
+        async function runPipeline() {
+            const inputElement = document.getElementById('clinical-text');
+            const sourceText = inputElement.value.trim();
+
+            if (!sourceText) {
+                document.getElementById('summary-highlighted').innerHTML = '<p class="text-blue-500">Please enter clinical text to summarize.</p>';
+                show('output-section');
+                return;
+            }
+
+            hide('output-section');
+            hide('debug-alert');
+            show('loading-indicator');
+            document.getElementById('summarize-btn').disabled = true;
+
+            try {
+                // 1. NER on Source (Step 2)
+                const sourceEntities = extractEntities(sourceText);
+                const sourceEntityTexts = sourceEntities.map(e => e.text);
+                
+                // Display source entities
+                const tagsHtml = sourceEntities.map(e => 
+                    `<span class="inline-flex items-center px-3 py-1 text-sm font-medium rounded-full bg-opacity-70 highlight-${e.type}">
+                        ${e.text}
+                        <span class="ml-2 opacity-60 text-xs">(${e.type})</span>
+                    </span>`
+                ).join('');
+                document.getElementById('source-entities').innerHTML = tagsHtml || 'No known entities found.';
+
+
+                // 2. Summarization (Step 3)
+                const rawSummary = await getEntityAwareSummary(sourceText, sourceEntities);
+
+                // 3. Re-run NER on Summary (for Hallucination Check - Step 4)
+                const summaryEntities = extractEntities(rawSummary);
+                const summaryEntityTexts = summaryEntities.map(e => e.text);
+
+                // 4. Mitigation Metric Calculation (Step 4)
+                const covered = sourceEntityTexts.filter(s => summaryEntityTexts.some(sum => sum.toLowerCase() === s.toLowerCase()));
+                const missing = sourceEntityTexts.filter(s => !summaryEntityTexts.some(sum => sum.toLowerCase() === s.toLowerCase()));
+                const hallucinated = summaryEntityTexts.filter(sum => !sourceEntityTexts.some(s => s.toLowerCase() === sum.toLowerCase()));
+
+                // 5. Entity Highlighting (Step 5)
+                const summaryHtml = highlightEntities(rawSummary, summaryEntities);
+                document.getElementById('summary-highlighted').innerHTML = summaryHtml;
+
+                // 6. Display Mitigation Metrics
+                document.getElementById('covered-ents').textContent = covered.join(", ") || 'None';
+                document.getElementById('missing-ents').textContent = missing.join(", ") || 'None';
+                document.getElementById('hallucinated-ents').textContent = hallucinated.join(", ") || 'None (Success!)';
+
+                show('output-section');
+
+            } catch (e) {
+                // Handle API error visually
+                document.getElementById('debug-message').textContent = e.message;
+                show('debug-alert');
+                
+                // Fallback UI update
+                document.getElementById('summary-highlighted').innerHTML = `<p class="text-red-500">Processing failed. See error details above and check your browser's console (F12).</p>`;
+                show('output-section');
+                
+                console.error("Pipeline Error:", e);
+            } finally {
+                hide('loading-indicator');
+                document.getElementById('summarize-btn').disabled = false;
+                lucide.createIcons(); // Re-render icons after content update
+            }
+        }
+
+        // --- Event Listeners and Initialization ---
+
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            document.getElementById('summarize-btn').addEventListener('click', runPipeline);
+        });
+    </script>
+</body>
+</html>
