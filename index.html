@@ -232,24 +232,34 @@ Patient Jane Doe, 65, was admitted for acute onset severe chest pain radiating t
 
             // JSON Schema to force structured output
             const responseSchema = {
-                type: "OBJECT",
+                type: "object",
                 properties: {
-                    summary: { "type": "STRING", "description": "The concise, coherent, and factually accurate clinical summary." },
+                    summary: { 
+                        type: "string",
+                        description: "The concise, coherent, and factually accurate clinical summary."
+                    },
                     entities: {
-                        type: "ARRAY",
+                        type: "array",
                         description: "A list of critical medical and patient entities extracted from the original text.",
                         items: {
-                            type: "OBJECT",
+                            type: "object",
                             properties: {
-                                text: { "type": "STRING", "description": "The exact entity text (e.g., 'Jane Doe')." },
-                                type: { "type": "STRING", "description": "The type of entity (must be one of: 'Disease', 'Drug', 'Procedure', 'Lab Test', 'Patient Detail')." } // UPDATED ENTITY LIST
+                                text: { 
+                                    type: "string",
+                                    description: "The exact entity text."
+                                },
+                                type: { 
+                                    type: "string",
+                                    enum: ["Disease", "Drug", "Procedure", "Lab Test", "Patient Detail"]
+                                }              
                             },
-                            propertyOrdering: ["text", "type"]
+                            required: ["text", "type"]
                         }
                     }
                 },
-                propertyOrdering: ["summary", "entities"]
-            }; // UPDATED responseSchema
+                required: ["summary", "entities"]
+            };
+
 
             const payload = {
                 contents: [{ parts: [{ text: userQuery }] }],
@@ -446,4 +456,5 @@ Patient Jane Doe, 65, was admitted for acute onset severe chest pain radiating t
 </body>
 
 </html>
+
 
